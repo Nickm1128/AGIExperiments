@@ -27,39 +27,77 @@ MUTATION_STRENGTH = 0.5 # Strength for mutations during reproduction
 NEURON_COUNT = 50 # Consistent neuron count for agents
 INPUT_NOISE_STD = .1
 
-NUM_SIMULATION_STEPS = 10_000_000 # Total steps for the multi-agent simulation
+NUM_SIMULATION_STEPS = 1_000_000 # Total steps for the multi-agent simulation
 
 
 # --- Helper Functions ---
-
-def load_population(directory, num=None): # Added num parameter
-    """Loads all pickled Agent objects from a specified directory, optionally selecting a subset."""
+def load_population(directory, num=None):
+    """Loads a population of Agent objects from a specified directory.
+    Prioritizes loading from 'sim_population.pkl' if it exists,
+    otherwise loads individual agent files.
+    
+    Args:
+        directory (str): The path to the directory containing agent pickle files.
+        num (int, optional): The desired number of agents to load. If more agents
+                             are available, a random subset will be loaded.
+                             If None, all available agents will be loaded.
+    Returns:
+        list: A list of loaded Agent objects.
+    """
     population = []
-    print(f"Loading agents from '{directory}'...")
+    filepath_sim_population = os.path.join(directory, "sim_population.pkl")
+
+    # Strategy 1: Try to load from a single 'sim_population.pkl' file
+    if os.path.exists(filepath_sim_population):
+        try:
+            with open(filepath_sim_population, 'rb') as f:
+                loaded_all_agents = pickle.load(f)
+            print(f"Loaded population from '{filepath_sim_population}'.")
+            
+            # Ensure agents have energy attribute if loaded from old saves
+            # (Assuming INITIAL_AGENT_ENERGY is accessible in this scope)
+            for agent in loaded_all_agents:
+                if not hasattr(agent, 'energy'):
+                    agent.energy = INITIAL_AGENT_ENERGY # Default energy for compatibility
+            
+            # Apply num filtering if requested
+            if num is not None and len(loaded_all_agents) > num:
+                population = random.sample(loaded_all_agents, num)
+                print(f"Selected {len(population)} agents (requested {num}).")
+            else:
+                population = loaded_all_agents
+            return population
+        except Exception as e:
+            print(f"Error loading '{filepath_sim_population}': {e}. Falling back to individual files.")
+
+    # Strategy 2: Fallback to loading individual .pkl files (previous method)
+    print(f"Loading agents from individual files in '{directory}'...")
     if not os.path.exists(directory):
         print(f"Error: Directory '{directory}' not found.")
         return []
     
-    all_loaded_agents = []
+    all_loaded_agents_individual = []
     for filename in os.listdir(directory):
-        if filename.endswith(".pkl"):
+        # Exclude the consolidated 'sim_population.pkl' if it exists in the directory
+        if filename.endswith(".pkl") and filename != "sim_population.pkl":
             filepath = os.path.join(directory, filename)
             try:
                 with open(filepath, 'rb') as f:
                     agent = pickle.load(f)
-                    # Ensure agent has energy attribute if loaded from old saves
                     if not hasattr(agent, 'energy'):
-                        agent.energy = INITIAL_AGENT_ENERGY
-                    all_loaded_agents.append(agent)
+                        agent.energy = INITIAL_AGENT_ENERGY # Default energy for compatibility
+                    all_loaded_agents_individual.append(agent)
             except Exception as e:
                 print(f"Error loading {filename}: {e}")
     
-    if num is not None and len(all_loaded_agents) > num:
-        population = random.sample(all_loaded_agents, num) # Select random 'num' agents
-        print(f"Loaded {len(population)} agents (selected {num} from {len(all_loaded_agents)} available).")
+    # Apply num filtering if requested for individually loaded agents
+    if num is not None and len(all_loaded_agents_individual) > num:
+        population = random.sample(all_loaded_agents_individual, num)
+        print(f"Loaded {len(population)} agents (selected {num} from {len(all_loaded_agents_individual)} available).")
     else:
-        population = all_loaded_agents
-        print(f"Loaded {len(population)} agents.")
+        population = all_loaded_agents_individual
+    
+    print(f"Loaded {len(population)} agents.")
     return population
 
 def spawn_food(world, current_food_positions):
