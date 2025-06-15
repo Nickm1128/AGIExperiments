@@ -27,7 +27,7 @@ MUTATION_STRENGTH = 0.5 # Strength for mutations during reproduction
 NEURON_COUNT = 50 # Consistent neuron count for agents
 INPUT_NOISE_STD = .1
 
-NUM_SIMULATION_STEPS = 1_000_000 # Total steps for the multi-agent simulation
+NUM_SIMULATION_STEPS = 100_000 # Total steps for the multi-agent simulation
 
 
 # --- Helper Functions ---
@@ -392,7 +392,7 @@ def run_multi_agent_simulation(num=50): # Added num parameter
 
     animation_filename = "simulation_animation.gif" # or .mp4, but requires ffmpeg
     print(f"Saving animation to {animation_filename} (this may take a while)...")
-    ani.save(animation_filename, writer='pillow', fps=10) # 'pillow' for GIF, 'ffmpeg' for MP4 (requires ffmpeg installed)
+    ani.save(animation_filename, writer='pillow', fps=5) # 'pillow' for GIF, 'ffmpeg' for MP4 (requires ffmpeg installed)
     plt.close(fig) # Close the figure to free up memory
     print("Animation saved!")
 

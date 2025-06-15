@@ -15,8 +15,8 @@ from multiagentsimulation import (
 
 # --- Evaluation Parameters ---
 NUM_EVALUATION_EPISODES = 50 # How many test scenarios each agent runs through
-STEPS_PER_EVALUATION_EPISODE = 100 # Max steps per evaluation episode
-EVALUATION_FOOD_SPAWN_INTERVAL = 50 # Food spawning interval during evaluation
+STEPS_PER_EVALUATION_EPISODE = 101 # Max steps per evaluation episode
+EVALUATION_FOOD_SPAWN_INTERVAL = 25 # Food spawning interval during evaluation
 EVALUATION_MAX_FOOD_ON_MAP = 3 # Max food on map during evaluation
 
 # --- Evaluation Function for a Single Agent ---
