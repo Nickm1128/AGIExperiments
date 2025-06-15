@@ -1,9 +1,21 @@
 from Agent import Agent
 from GravityWorld import GravityWorld, Tile
-import random 
+import random
 import numpy as np
-import pickle 
-import os 
+import pickle
+import os
+
+# Pull in constants and helpers from the main multi-agent simulation so the
+# pretraining environment matches what agents will experience later.
+from multiagentsimulation import (
+    WORLD_WIDTH,
+    WORLD_HEIGHT,
+    INPUT_NOISE_STD,
+    NEURON_COUNT,
+    SAVE_DIRECTORY,
+    spawn_food,
+    place_agents_in_world,
+)
 
 def create_initial_population(population_size, neuron_count):
     """
@@ -23,103 +35,97 @@ def train_single_agent(agent_to_train):
     # Training parameters
     NUM_EPISODES = 100
     STEPS_PER_EPISODE = 50
-    INPUT_NOISE_STD = 0.1 
-    WORLD_WIDTH = 50
-    WORLD_HEIGHT = 50 
 
     print(f"\n--- Starting training for {agent_to_train.name} ---")
     for episode in range(NUM_EPISODES):
         # Create a new world for each episode with procedural terrain
         world = GravityWorld(width=WORLD_WIDTH, height=WORLD_HEIGHT)
 
-        # Place agent at the top of the world (y=0) on an EMPTY spot
-        agent_placed = False
-        y_check = WORLD_HEIGHT
-        while not agent_placed:
-            agent_start_x = random.randint(0, world.width - 1)
-            if world.get_tile(agent_start_x, y_check) == Tile.EMPTY:
-                world.agent_pos = (agent_start_x, 0)
-                world.place_tile(world.agent_pos[0], world.agent_pos[1], Tile.AGENT)
-                agent_placed = True
-            else:
-                y_check -= 1
+        # Place the agent using the same logic as the simulation
+        place_agents_in_world(world, [agent_to_train])
 
-        # Place food randomly on the ground level (y = world.height - 2) on an EMPTY spot
-        food_placed = False
-        y_check = WORLD_HEIGHT
-        while not food_placed:
-            food_start_x = random.randint(0, world.width - 1)
-            if world.get_tile(food_start_x, world.height - (world.height - 3)) == Tile.EMPTY:
-                world.food_pos = (food_start_x, world.height - 2)
-                world.place_tile(world.food_pos[0], world.food_pos[1], Tile.FOOD)
-                food_placed = True
+        # Spawn a single food item in the air
+        active_food_positions = spawn_food(world, [])
+        if active_food_positions:
+            food_pos = active_food_positions[0]
+        else:
+            food_pos = (random.randint(0, WORLD_WIDTH - 1), 2)
+            world.place_tile(food_pos[0], food_pos[1], Tile.FOOD)
+            active_food_positions = [food_pos]
 
 
         agent_to_train.reset()
-        previous_distance_to_food = abs(world.agent_pos[0] - world.food_pos[0])
+        previous_distance_to_food = abs(agent_to_train.position[0] - food_pos[0]) + abs(agent_to_train.position[1] - food_pos[1])
 
         for step in range(STEPS_PER_EPISODE):
-            if world.is_food_collected():
+            if not active_food_positions:
                 break
 
-            # 1. Determine Input for Agent (relative horizontal distance to food with noise)
-            if world.food_pos != (None, None):
-                relative_x_to_food = world.food_pos[0] - world.agent_pos[0]
-            else: # Food collected, provide no specific directional input
-                relative_x_to_food = 0
+            # 1. Determine Input for Agent using local tile observations
+            radius = 15
+            local_inputs = []
+            ax, ay = agent_to_train.position
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    tx = ax + dx
+                    ty = ay + dy
+                    if 0 <= tx < world.width and 0 <= ty < world.height:
+                        tile_val = world.get_tile(tx, ty)
+                    else:
+                        tile_val = Tile.BLOCK
+                    normalized_val = tile_val / 3.0
+                    local_inputs.append(normalized_val + random.gauss(0, INPUT_NOISE_STD))
 
-            # Calculate absolute distance
-            abs_distance_to_food = abs(relative_x_to_food)
-
-            # Make input weaker as it gets further away
-            if abs_distance_to_food == 0:
-                scaled_input = 0.0
-            else:
-                scaled_input = np.sign(relative_x_to_food) * (1.0 / (abs_distance_to_food + 1.0))
-
-            noisy_input = scaled_input + random.gauss(0, INPUT_NOISE_STD)
-            agent_to_train.receive_inputs([noisy_input])
+            agent_to_train.receive_inputs(local_inputs)
 
             # 2. Agent decides action
             agent_to_train.step()
             action = agent_to_train.decide_action()
 
             # 3. Execute Action in World
-            action_successful = False
             if action == 'jump_left':
-                action_successful = world.jump(-1)
+                world.jump(-1)
             elif action == 'left':
-                action_successful = world.move_agent(-1)
+                world.move_agent(-1)
             elif action == 'right':
-                action_successful = world.move_agent(1)
+                world.move_agent(1)
             elif action == 'jump_right':
-                action_successful = world.jump(1)
+                world.jump(1)
             elif action == 'wait':
-                action_successful = True # Waiting is always "successful"
+                pass
 
             # Apply gravity after agent's action
-            world.apply_gravity()
+            updated_agent_pos, updated_food_pos = world.apply_gravity([world.agent_pos], active_food_positions)
+            if updated_agent_pos:
+                world.agent_pos = updated_agent_pos[0]
+                agent_to_train.position = world.agent_pos
+            active_food_positions = updated_food_pos
 
             # 4. Calculate Reward and Agent learns
-            reward = 0.0
-            if world.is_food_collected():
-                reward = 10.0 # High reward for collecting food
-            else:
-                current_distance_to_food = abs(world.agent_pos[0] - world.food_pos[0])
+            reward = -0.05
+            collected = False
+            for f_pos in list(active_food_positions):
+                if world.agent_pos == f_pos:
+                    reward += 10.0
+                    world.place_tile(f_pos[0], f_pos[1], Tile.EMPTY)
+                    active_food_positions.remove(f_pos)
+                    collected = True
+                    break
+
+            if not collected and active_food_positions:
+                fx, fy = active_food_positions[0]
+                current_distance_to_food = abs(world.agent_pos[0] - fx) + abs(world.agent_pos[1] - fy)
                 if current_distance_to_food < previous_distance_to_food:
-                    reward = 1.0 # Positive reward for getting closer
+                    reward += 1.0
                 elif current_distance_to_food > previous_distance_to_food:
-                    reward = -1.0 # Negative reward for moving away
-                else: # Same distance, or stuck
-                    reward = -0.1 # Small penalty for not making progress
-
-                reward -= 0.05 # Small step penalty to encourage efficiency
-
+                    reward -= 1.0
+                else:
+                    reward -= 0.1
                 previous_distance_to_food = current_distance_to_food
 
             agent_to_train.learn(reward)
-        if not world.is_food_collected():
-            pass # Suppress output during batch training
+        # Silence output during batch training
+        pass
         
     print(f"--- Training for {agent_to_train.name} finished. ---")
     return agent_to_train
@@ -127,13 +133,13 @@ def train_single_agent(agent_to_train):
 if __name__ == "__main__":
     # --- Collect the initial population ---
     POPULATION_SIZE = 50
-    NEURON_COUNT_FOR_NEW_AGENTS = 50
+    # Use the same neuron count as the main simulation
+    NEURON_COUNT_FOR_NEW_AGENTS = NEURON_COUNT
 
     initial_population = create_initial_population(POPULATION_SIZE, NEURON_COUNT_FOR_NEW_AGENTS)
 
     # --- Train and Save the Population ---
-    SAVE_DIRECTORY = "trained_agents"
-    os.makedirs(SAVE_DIRECTORY, exist_ok=True) # Create the directory if it doesn't exist
+    os.makedirs(SAVE_DIRECTORY, exist_ok=True)  # Create the directory if it doesn't exist
 
     trained_population = []
     print(f"\nStarting training for {POPULATION_SIZE} agents and saving them to '{SAVE_DIRECTORY}'...")
