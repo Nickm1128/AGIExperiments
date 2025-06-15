@@ -219,41 +219,22 @@ def run_multi_agent_simulation(num=50): # Added num parameter
                 agents_to_remove.append(agent)
                 continue
 
-            # 1. Determine Input for Agent
-            if world.food_pos != (None, None): # Only provide input if main food hasn't been collected by any agent
-                # Find the closest food for this agent
-                closest_food_x = None
-                min_dist = float('inf')
-                
-                # Check main food first
-                if world.food_pos != (None, None) and world.get_tile(*world.food_pos) == Tile.FOOD:
-                    dist_to_main_food = abs(world.food_pos[0] - agent.position[0])
-                    if dist_to_main_food < min_dist:
-                        min_dist = dist_to_main_food
-                        closest_food_x = world.food_pos[0]
+            # 1. Determine Input for Agent based on surrounding tiles
+            radius = 15
+            local_inputs = []
+            ax, ay = agent.position
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    tx = ax + dx
+                    ty = ay + dy
+                    if 0 <= tx < world.width and 0 <= ty < world.height:
+                        tile_val = world.get_tile(tx, ty)
+                    else:
+                        tile_val = Tile.BLOCK
+                    normalized_val = tile_val / 3.0
+                    local_inputs.append(normalized_val + random.gauss(0, INPUT_NOISE_STD))
 
-                # Check other spawned food items
-                for food_pos in active_food_positions:
-                    dist = abs(food_pos[0] - agent.position[0])
-                    if dist < min_dist:
-                        min_dist = dist
-                        closest_food_x = food_pos[0]
-
-                if closest_food_x is not None:
-                    relative_x_to_closest_food = closest_food_x - agent.position[0]
-                else: # No food on map, provide no specific directional input
-                    relative_x_to_closest_food = 0
-            else: # No food on map
-                relative_x_to_closest_food = 0
-
-            abs_distance_to_food = abs(relative_x_to_closest_food)
-            if abs_distance_to_food == 0:
-                scaled_input = 0.0
-            else:
-                scaled_input = np.sign(relative_x_to_closest_food) * (1.0 / (abs_distance_to_food + 1.0))
-            
-            noisy_input = scaled_input + random.gauss(0, INPUT_NOISE_STD)
-            agent.receive_inputs([noisy_input])
+            agent.receive_inputs(local_inputs)
 
             # 2. Agent decides action
             agent.step()
@@ -367,15 +348,12 @@ def run_multi_agent_simulation(num=50): # Added num parameter
                 resurrected_population.append(resurrected_agent)
 
             population = resurrected_population
-            
-            # Clear food and re-spawn for the new generation
-            # Remove all food tiles from the grid
-            for f_pos in active_food_positions:
-                world.place_tile(f_pos[0], f_pos[1], Tile.EMPTY)
-            world.food_pos = (None, None) # Clear main food too
-            active_food_positions = [] # Clear the list
-            
-            # Place the resurrected agents in the world (resets their energy as well)
+
+            # Regenerate the world for the new generation
+            world = GravityWorld(width=WORLD_WIDTH, height=WORLD_HEIGHT)
+            active_food_positions = []
+
+            # Place the resurrected agents in the new world
             place_agents_in_world(world, population)
 
             # Spawn initial food for the new generation
