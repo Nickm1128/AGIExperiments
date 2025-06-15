@@ -1,7 +1,6 @@
 import random
 import copy
-import Agent
-from Agent import Synapse
+from Agent import Synapse, Agent
 
 def mutate_agent(original_agent, mutation_rate, mutation_strength):
     """

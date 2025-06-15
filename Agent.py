@@ -35,7 +35,7 @@ class Synapse:
         self.pre = pre
         self.post = post
         self.weight = weight
-        self.learning_rate = 0.05
+        self.learning_rate = 0.1
 
     def propagate(self):
         if self.pre.fired:
@@ -59,8 +59,8 @@ class Agent:
 
         self.initialize_synapses()
 
-        if neuron_count < 4:
-            raise ValueError("Agent must have at least 4 neurons for output actions.")
+        if neuron_count < 3:
+            raise ValueError("Agent must have at least 2 neurons for output actions.")
         self.output_neurons = self.neurons[-4:]
 
     def initialize_synapses(self):
