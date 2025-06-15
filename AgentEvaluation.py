@@ -107,27 +107,22 @@ def evaluate_agent_performance(agent, evaluation_world_seed=None):
             if step % EVALUATION_FOOD_SPAWN_INTERVAL == 0:
                 active_food_positions = spawn_food(world, active_food_positions)
             
-            # Determine Input for Agent
-            relative_x_to_closest_food = 0
-            if active_food_positions:
-                closest_food_x = None
-                min_dist = float('inf')
-                for f_pos in active_food_positions:
-                    dist = abs(f_pos[0] - current_agent_eval_pos[0])
-                    if dist < min_dist:
-                        min_dist = dist
-                        closest_food_x = f_pos[0]
-                if closest_food_x is not None:
-                    relative_x_to_closest_food = closest_food_x - current_agent_eval_pos[0]
-            
-            abs_distance_to_food = abs(relative_x_to_closest_food)
-            if abs_distance_to_food == 0:
-                scaled_input = 0.0
-            else:
-                scaled_input = np.sign(relative_x_to_closest_food) * (1.0 / (abs_distance_to_food + 1.0))
-            
-            noisy_input = scaled_input + random.gauss(0, INPUT_NOISE_STD)
-            agent.receive_inputs([noisy_input])
+            # Determine Input for Agent using local tile view (same as multi-agent simulation)
+            radius = 15
+            local_inputs = []
+            ax, ay = current_agent_eval_pos
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    tx = ax + dx
+                    ty = ay + dy
+                    if 0 <= tx < world.width and 0 <= ty < world.height:
+                        tile_val = world.get_tile(tx, ty)
+                    else:
+                        tile_val = Tile.BLOCK
+                    normalized_val = tile_val / 3.0
+                    local_inputs.append(normalized_val + random.gauss(0, INPUT_NOISE_STD))
+
+            agent.receive_inputs(local_inputs)
 
             # Agent decides action
             agent.step()

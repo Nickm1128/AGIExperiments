@@ -340,13 +340,14 @@ def run_multi_agent_simulation(num=50): # Added num parameter
 
             resurrected_population = []
             for agent_to_res in res_list: # Resurrect 'num' agents
-                
-                
+
+
                 # Apply mutation to this new agent to create variation
                 # Using stronger mutation to encourage more exploration when resurrecting
                 resurrected_agent = mutate_agent(agent_to_res, MUTATION_RATE, MUTATION_STRENGTH)
                 resurrected_population.append(resurrected_agent)
 
+            res_list.clear()  # Clear references to dead agents once used
             population = resurrected_population
 
             # Regenerate the world for the new generation
