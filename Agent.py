@@ -9,6 +9,7 @@ class Neuron:
         self.threshold_pos = random.uniform(0.05, 0.5)
         self.threshold_neg = random.uniform(-0.5, -0.05)
         self.fired = False
+        
 
     def reset(self):
         self.state = 0.0
@@ -55,6 +56,7 @@ class Agent:
         self.name = name
         self.neurons = [Neuron(f"{name}_n{i}") for i in range(neuron_count)]
         self.synapses = []
+        self.energy = 100.0
         self.position = (0, 0)
 
         self.initialize_synapses()

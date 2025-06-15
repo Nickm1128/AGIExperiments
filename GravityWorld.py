@@ -1,3 +1,12 @@
+import random 
+
+# --- GravityWorld Class ---
+class Tile:
+    EMPTY = 0
+    BLOCK = 1
+    AGENT = 2
+    FOOD = 3
+
 # --- GravityWorld Class ---
 class Tile:
     EMPTY = 0
@@ -7,20 +16,48 @@ class Tile:
 
 
 class GravityWorld:
-    def __init__(self, width=10, height=10):
+    def __init__(self, width=10, height=10): # num_random_blocks removed, terrain is procedural
         self.width = width
         self.height = height
         self.grid = [[Tile.EMPTY for _ in range(width)] for _ in range(height)]
 
-        self.agent_pos = (0,0) # Agent position will be set by external functions
-        self.food_pos = (0,0)  # Food position will be set by external functions
+        self.agent_pos = (0,0)
+        self.food_pos = (0,0)
         self.agent_holding = False
 
         # Initialize solid ground layer at the bottom
         for x in range(self.width):
             self.place_tile(x, self.height - 1, Tile.BLOCK)
 
-        # Agent is NOT placed here anymore. Setup is handled by train/test functions.
+        self.generate_step_terrain() # Call the new procedural terrain generation
+
+    def generate_step_terrain(self):
+        # The y-coordinate of the ground is self.height - 1.
+        # Max possible column height (blocks above ground layer, excluding the ground itself)
+        # User wants height 0-25 for world height 50. So, max is roughly half world height.
+        MAX_COLUMN_HEIGHT_ABOVE_GROUND = self.height // 2 - 1
+        if MAX_COLUMN_HEIGHT_ABOVE_GROUND < 0:
+            MAX_COLUMN_HEIGHT_ABOVE_GROUND = 0
+
+        # Initialize the height of the first column
+        current_column_height = random.randint(0, MAX_COLUMN_HEIGHT_ABOVE_GROUND)
+
+        for x in range(self.width):
+            # Place blocks in the current column from the ground up to `current_column_height`
+            for y_offset in range(current_column_height):
+                block_y = self.height - 2 - y_offset # Start from one above ground, going upwards
+                if block_y >= 0: # Ensure block_y is within grid bounds
+                     self.place_tile(x, block_y, Tile.BLOCK)
+
+            # Determine height for the next column (only if not the last column)
+            if x < self.width - 1:
+                height_change = random.choice([-1, 0, 1])
+                next_column_height = current_column_height + height_change
+                
+                # Ensure next_column_height stays within valid bounds (0 to MAX_COLUMN_HEIGHT_ABOVE_GROUND)
+                next_column_height = max(0, min(MAX_COLUMN_HEIGHT_ABOVE_GROUND, next_column_height))
+                
+                current_column_height = next_column_height
 
     def place_tile(self, x, y, kind):
         if 0 <= x < self.width and 0 <= y < self.height:
@@ -31,20 +68,56 @@ class GravityWorld:
             return self.grid[y][x]
         return None
 
-    def apply_gravity(self):
+    def apply_gravity(self, agent_positions, food_positions): # Modified to accept lists of positions
+        # Store initial positions for return
+        original_agent_positions = list(agent_positions)
+        original_food_positions = list(food_positions)
+        
+        # Apply gravity to falling blocks
         for y in reversed(range(self.height - 1)):
             for x in range(self.width):
                 if self.grid[y][x] == Tile.BLOCK and self.grid[y + 1][x] == Tile.EMPTY and (y + 1 < self.height -1):
                     self.grid[y][x] = Tile.EMPTY
                     self.grid[y + 1][x] = Tile.BLOCK
-                    if (x, y) == self.food_pos:
-                        self.food_pos = (x, y + 1)
+                    # If any entity (food or agent) was on this falling block, they should fall with it.
+                    # This is handled by entity-specific gravity loops below, or if they just 'land' on it.
 
-        ax, ay = self.agent_pos
-        if ay < self.height - 1 and self.grid[ay + 1][ax] == Tile.EMPTY:
-            self.grid[ay][ax] = Tile.EMPTY
-            self.grid[ay + 1][ax] = Tile.AGENT
-            self.agent_pos = (ax, ay + 1)
+        # Apply gravity to Food
+        # Create a list of food positions that are currently on the grid to avoid modifying while iterating
+        current_food_on_grid = []
+        for y_grid in range(self.height):
+            for x_grid in range(self.width):
+                if self.grid[y_grid][x_grid] == Tile.FOOD:
+                    current_food_on_grid.append((x_grid, y_grid))
+
+        updated_food_positions = []
+        for x, y in current_food_on_grid:
+            if y < self.height - 1 and self.grid[y + 1][x] == Tile.EMPTY:
+                self.grid[y][x] = Tile.EMPTY # Clear old spot
+                self.grid[y + 1][x] = Tile.FOOD # Place in new spot
+                updated_food_positions.append((x, y + 1))
+            else:
+                updated_food_positions.append((x, y)) # No fall, retain original position
+        
+        # Apply gravity to Agents
+        # Similar to food, collect agent positions then apply gravity
+        current_agents_on_grid = []
+        for y_grid in range(self.height):
+            for x_grid in range(self.width):
+                if self.grid[y_grid][x_grid] == Tile.AGENT:
+                    current_agents_on_grid.append((x_grid, y_grid))
+
+        updated_agent_positions = []
+        for x, y in current_agents_on_grid:
+            if y < self.height - 1 and self.grid[y + 1][x] in [Tile.EMPTY, Tile.FOOD]:
+                self.grid[y][x] = Tile.EMPTY # Clear old spot
+                self.grid[y + 1][x] = Tile.AGENT # Place in new spot
+                updated_agent_positions.append((x, y + 1))
+            else:
+                updated_agent_positions.append((x, y)) # No fall, retain original position
+
+        return updated_agent_positions, updated_food_positions # Return updated positions
+
 
 
     def move_agent(self, dx):
@@ -98,24 +171,18 @@ class GravityWorld:
         return False
 
     def is_food_collected(self):
-        # Food is collected if agent is at food's position.
-        # Note: food_pos is set to (None,None) in move_agent when collected
         return self.agent_pos == self.food_pos or self.food_pos == (None, None)
 
     def render(self):
-        # Create a deep copy of the grid for rendering to avoid modifying the actual game state
         render_grid = [row[:] for row in self.grid]
 
-        # Draw Food (if still present) first, so Agent can draw over it
         if self.food_pos != (None, None) and self.get_tile(*self.food_pos) == Tile.FOOD:
             render_grid[self.food_pos[1]][self.food_pos[0]] = Tile.FOOD
 
-        # Draw Agent on top of everything else
         ax, ay = self.agent_pos
         if self.get_tile(ax, ay) == Tile.AGENT:
              render_grid[ay][ax] = Tile.AGENT
 
-        # If agent is holding a block, render it above the agent for visualization purposes
         if self.agent_holding:
             if ay > 0:
                 render_grid[ay-1][ax] = Tile.BLOCK
