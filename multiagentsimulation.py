@@ -24,14 +24,14 @@ FOOD_SPAWN_INTERVAL = 1 # Every N steps, try to spawn food
 MAX_FOOD_ON_MAP = 50 # Maximum number of food items allowed at once
 REPRODUCTION_ENERGY_THRESHOLD = 101.0 # Energy needed to reproduce
 REPRODUCTION_COST = 20.0 # Energy cost of reproduction
-MUTATION_RATE = .5 # Rate for mutations during reproduction
-MUTATION_STRENGTH = .5 # Strength for mutations during reproduction
+MUTATION_RATE = .25 # Rate for mutations during reproduction
+MUTATION_STRENGTH = .25 # Strength for mutations during reproduction
 NEURON_COUNT = 50 # Consistent neuron count for agents
 INPUT_NOISE_STD = .1
 MAX_WORLD_WIDTH = 500
 MAX_WORLD_HEIGHT = 20
 
-NUM_SIMULATION_STEPS = 10_000_000 # Total steps for the multi-agent simulation
+NUM_SIMULATION_STEPS = 1_000_000 # Total steps for the multi-agent simulation
 
 # New constants for population control
 MAX_POPULATION_SIZE = 50
