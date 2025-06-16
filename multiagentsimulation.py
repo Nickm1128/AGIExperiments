@@ -4,30 +4,39 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from config import colors, cmap, bounds, norm # Import color config
+from config import colors, cmap, bounds, norm
 
 # Import classes from your existing modules
 from Agent import Agent
 from GravityWorld import GravityWorld, Tile
-from mutations import mutate_agent # Assuming you want to use your mutation logic for reproduction
+from mutations import mutate_agent
 
 # --- Configuration Parameters ---
 SAVE_DIRECTORY = "trained_agents"
-WORLD_WIDTH = 50
-WORLD_HEIGHT = 50
+WORLD_WIDTH = 100
+WORLD_HEIGHT = 20
+INITIAL_WORLD_WIDTH = 100
+INITIAL_WORLD_HEIGHT = 20
 INITIAL_AGENT_ENERGY = 100.0
-ENERGY_DEPLETION_RATE = 1 # Energy lost per simulation step
-FOOD_ENERGY_RECHARGE = 50.0 # Energy gained from eating food
-FOOD_SPAWN_INTERVAL = 25 # Every N steps, try to spawn food
-MAX_FOOD_ON_MAP = 5 # Maximum number of food items allowed at once
+ENERGY_DEPLETION_RATE = 1.5 # Energy lost per simulation step
+FOOD_ENERGY_RECHARGE = 100.0 # Energy gained from eating food
+FOOD_SPAWN_INTERVAL = 1 # Every N steps, try to spawn food
+MAX_FOOD_ON_MAP = 50 # Maximum number of food items allowed at once
 REPRODUCTION_ENERGY_THRESHOLD = 101.0 # Energy needed to reproduce
-REPRODUCTION_COST = 10.0 # Energy cost of reproduction
-MUTATION_RATE = 0.1 # Rate for mutations during reproduction
-MUTATION_STRENGTH = 0.5 # Strength for mutations during reproduction
+REPRODUCTION_COST = 20.0 # Energy cost of reproduction
+MUTATION_RATE = .5 # Rate for mutations during reproduction
+MUTATION_STRENGTH = .5 # Strength for mutations during reproduction
 NEURON_COUNT = 50 # Consistent neuron count for agents
 INPUT_NOISE_STD = .1
+MAX_WORLD_WIDTH = 500
+MAX_WORLD_HEIGHT = 20
 
 NUM_SIMULATION_STEPS = 100_000 # Total steps for the multi-agent simulation
+
+# New constants for population control
+MAX_POPULATION_SIZE = 50
+OVERPOPULATION_THRESHOLD = 75
+RES_LIST_LIMIT = 50 # Limit for res_list size before applying selection for dead agents
 
 
 # --- Helper Functions ---
@@ -134,9 +143,8 @@ def place_agents_in_world(world, agents_list):
         while not agent_placed and attempts < WORLD_WIDTH * 2: # Give it a few tries at y=0
             current_x = random.randint(0, WORLD_WIDTH - 1)
             if world.get_tile(current_x, 0) == Tile.EMPTY:
-                world.agent_pos = (current_x, 0)
-                world.place_tile(world.agent_pos[0], world.agent_pos[1], Tile.AGENT)
-                agent.position = world.agent_pos
+                world.place_tile(current_x, 0, Tile.AGENT)
+                agent.position = (current_x, 0)
                 agent_placed = True
             attempts += 1
 
@@ -149,9 +157,8 @@ def place_agents_in_world(world, agents_list):
                 # Try placing in rows from 0 up to WORLD_HEIGHT - 3 (above the ground and first block layer)
                 current_y = random.randint(0, WORLD_HEIGHT - 3) 
                 if world.get_tile(current_x, current_y) == Tile.EMPTY:
-                    world.agent_pos = (current_x, current_y)
-                    world.place_tile(world.agent_pos[0], world.agent_pos[1], Tile.AGENT)
-                    agent.position = world.agent_pos
+                    world.place_tile(current_x, current_y, Tile.AGENT)
+                    agent.position = (current_x, current_y)
                     agent_placed = True
                 attempts += 1
         
@@ -159,67 +166,114 @@ def place_agents_in_world(world, agents_list):
         if not agent_placed:
             print(f"CRITICAL WARNING: {agent.name} could not be placed on an EMPTY tile anywhere after many attempts. Placing forcefully on default ground.")
             agent_start_x = random.randint(0, world.width - 1)
-            world.agent_pos = (agent_start_x, world.height - 2) # Place on the "ground" layer
-            world.place_tile(world.agent_pos[0], world.agent_pos[1], Tile.AGENT) # This might overwrite a block
-            agent.position = world.agent_pos
+            agent_start_y = world.height - 2 # Place on the "ground" layer
+            world.place_tile(agent_start_x, agent_start_y, Tile.AGENT)
+            agent.position = (agent_start_x, agent_start_y)
 
         # Reset energy for newly placed/resurrected agents
         agent.energy = INITIAL_AGENT_ENERGY # Ensure they start with full energy
 
+
 # --- Main Simulation Loop ---
-def run_multi_agent_simulation(num=50): # Added num parameter
-    # Load the trained population
-    population = load_population(SAVE_DIRECTORY, num=num) # Pass num to load_population
+def run_multi_agent_simulation(num=50):
+    population = load_population(SAVE_DIRECTORY, num=num)
     res_list = []
 
     if not population:
         print("No agents loaded. Please run PretrainingLoop.py first to train and save agents.")
         return
 
-    # Initialize the world for the multi-agent simulation
-    world = GravityWorld(width=WORLD_WIDTH, height=WORLD_HEIGHT)
-    active_food_positions = [] # Track current food items
-    world_states = [] # To store grid states for animation
-    population_at_each_step = [] # To store population size for animation title
-    num_food_at_each_step = [] # To store food count for animation title
+    current_width = INITIAL_WORLD_WIDTH
+    current_height = INITIAL_WORLD_HEIGHT
+    world = GravityWorld(width=current_width, height=current_height)
 
-    # Initial placement of agents in the world
-    place_agents_in_world(world, population) # Use the new helper function
+    # Start with a flat terrain: only bottom row is BLOCK
+    for x in range(current_width):
+        world.place_tile(x, current_height - 1, Tile.BLOCK)
 
+    active_food_positions = []
+    world_states = []
+    population_at_each_step = []
+    num_food_at_each_step = []
+
+    place_agents_in_world(world, population)
     print("\nStarting multi-agent simulation...")
-    generation = 1 # Start a generation counter
-    
+    generation = 1
+
     for step in range(NUM_SIMULATION_STEPS):
         if step % 100 == 0:
-            print(f"\n--- Simulation Step {step + 1}/{NUM_SIMULATION_STEPS} (Generation {generation}) ---")
+            print(f"\n--- Simulation Step {step + 1}/{NUM_SIMULATION_STEPS} (Generation {generation}) (Pop size: {len(population)}) ---")
 
-        # Periodically spawn food
-        if step % FOOD_SPAWN_INTERVAL == 0:
+        # Gradual world expansion
+        if step % 800 == 0 and (current_width < MAX_WORLD_WIDTH or current_height < MAX_WORLD_HEIGHT):
+            new_width = min(current_width + 4, MAX_WORLD_WIDTH)
+            new_height = min(current_height + 4, MAX_WORLD_HEIGHT)
+            print(f"[World Resize] Increasing world size to {new_width}x{new_height}")
+            new_world = GravityWorld(width=new_width, height=new_height)
+            for x in range(current_width):
+                for y in range(current_height):
+                    new_world.place_tile(x, y, world.get_tile(x, y))
+            for x in range(current_width, new_width):
+                new_world.place_tile(x, new_height - 1, Tile.BLOCK)
+            for x in range(new_width):
+                for y in range(current_height, new_height - 1):
+                    new_world.place_tile(x, y, Tile.EMPTY)
+                new_world.place_tile(x, new_height - 1, Tile.BLOCK)
+            world = new_world
+            current_width = new_width
+            current_height = new_height
+            place_agents_in_world(world, population)
+
+        # Terrain evolution
+        if step % 5 == 0:
+            for x in range(1, world.width - 1):
+                heights = []
+                for y in range(world.height - 2, -1, -1):
+                    if world.get_tile(x, y) == Tile.BLOCK:
+                        heights.append(y)
+                    elif heights:
+                        break
+                current_height = heights[0] if heights else (world.height - 1)
+                left_height = next((y for y in range(world.height - 2, -1, -1) if world.get_tile(x - 1, y) == Tile.BLOCK), world.height - 1)
+                right_height = next((y for y in range(world.height - 2, -1, -1) if world.get_tile(x + 1, y) == Tile.BLOCK), world.height - 1)
+                avg_neighbor_height = (left_height + right_height) // 2
+                if abs(current_height - avg_neighbor_height) <= 1:
+                    direction = random.choice([-1, 0, 1])
+                    target_y = current_height - direction
+                    if 0 <= target_y < world.height - 1:
+                        if direction == 1:
+                            world.place_tile(x, target_y, Tile.BLOCK)
+                        elif direction == -1 and world.get_tile(x, current_height) == Tile.BLOCK:
+                            world.place_tile(x, current_height, Tile.EMPTY)
+
+        proba = (NUM_SIMULATION_STEPS - step) / NUM_SIMULATION_STEPS
+        proba = np.max([proba, .2])
+        if step % FOOD_SPAWN_INTERVAL == 0 and np.random.rand() > proba:
             active_food_positions = spawn_food(world, active_food_positions)
 
         agents_to_remove = []
         new_agents = []
+        reproduced_this_step = set()
 
-        # Clear all agent positions from the grid before processing individual actions and gravity
         for y in range(world.height):
             for x in range(world.width):
                 if world.grid[y][x] == Tile.AGENT:
                     world.grid[y][x] = Tile.EMPTY
 
-        # Process each agent's turn
         for agent in population:
             if agent.energy <= 0:
-                agents_to_remove.append(agent)
-                continue # Skip dead agents
-
-            # Energy depletion
-            agent.energy -= ENERGY_DEPLETION_RATE
-            if agent.energy <= 0:
-                #print(f"{agent.name} ran out of energy and died.") # Suppress for cleaner output
+                if len(res_list) < 50 or agent in reproduced_this_step:
+                    res_list.append(agent)
                 agents_to_remove.append(agent)
                 continue
 
-            # 1. Determine Input for Agent based on surrounding tiles
+            agent.energy -= ENERGY_DEPLETION_RATE
+            if agent.energy <= 0:
+                if len(res_list) < 50 or agent in reproduced_this_step:
+                    res_list.append(agent)
+                agents_to_remove.append(agent)
+                continue
+
             radius = 15
             local_inputs = []
             ax, ay = agent.position
@@ -227,24 +281,15 @@ def run_multi_agent_simulation(num=50): # Added num parameter
                 for dx in range(-radius, radius + 1):
                     tx = ax + dx
                     ty = ay + dy
-                    if 0 <= tx < world.width and 0 <= ty < world.height:
-                        tile_val = world.get_tile(tx, ty)
-                    else:
-                        tile_val = Tile.BLOCK
+                    tile_val = Tile.BLOCK if not (0 <= tx < world.width and 0 <= ty < world.height) else world.get_tile(tx, ty)
                     normalized_val = tile_val / 3.0
                     local_inputs.append(normalized_val + random.gauss(0, INPUT_NOISE_STD))
 
             agent.receive_inputs(local_inputs)
-
-            # 2. Agent decides action
             agent.step()
             action = agent.decide_action()
+            world.agent_pos = agent.position
 
-            # Set world's agent_pos to current agent's position for its movement
-            # This is critical as GravityWorld's move_agent/jump still rely on world.agent_pos
-            world.agent_pos = agent.position 
-
-            # 3. Execute Action in World (updates world.agent_pos and places Tile.AGENT temporarily)
             if action == 'jump_left':
                 world.jump(-1)
             elif action == 'left':
@@ -253,132 +298,108 @@ def run_multi_agent_simulation(num=50): # Added num parameter
                 world.move_agent(1)
             elif action == 'jump_right':
                 world.jump(1)
-            elif action == 'wait':
-                pass # Waiting is always "successful", no world change
 
-            # Update agent's internal position from world's updated position after its move/jump
             agent.position = world.agent_pos
-            
-            # Re-place the agent in the world grid at its new position after its individual action
-            # This is important so world.apply_gravity sees all agents in their post-action spots
             world.place_tile(agent.position[0], agent.position[1], Tile.AGENT)
 
-
-        # Apply gravity after all agents have taken their actions
-        # Pass lists of positions for global gravity application
         current_agent_positions_on_grid = [(a.position[0], a.position[1]) for a in population if a.energy > 0 and a.position is not None]
         updated_agent_positions, updated_food_positions = world.apply_gravity(current_agent_positions_on_grid, active_food_positions)
 
-        # NEW: Re-synchronize agent.position for ALL agents by mapping to updated positions
-        # The order of updated_agent_positions corresponds to the order they were collected in current_agent_positions_on_grid
         agent_index = 0
         for agent in population:
-            if agent.energy > 0 and agent.position is not None:
-                if agent_index < len(updated_agent_positions):
-                    agent.position = updated_agent_positions[agent_index]
+            if agent.energy > 0 and agent.position is not None and agent_index < len(updated_agent_positions):
+                agent.position = updated_agent_positions[agent_index]
                 agent_index += 1
 
-        # Update active_food_positions based on gravity's outcome
         active_food_positions = updated_food_positions
 
-        # Check for food collection and apply reward
         food_to_remove_from_list_current_step = []
         for agent in population:
-            # Check main food (world.food_pos)
             if world.food_pos != (None, None) and agent.position == world.food_pos:
                 agent.energy += FOOD_ENERGY_RECHARGE
-                world.food_pos = (None, None) # Remove main food
-                print(f"{agent.name} collected main food! Energy: {agent.energy:.2f}")
+                world.food_pos = (None, None)
 
-            # Check other spawned food (using the updated active_food_positions list)
             for food_pos in active_food_positions:
                 if agent.position == food_pos:
                     agent.energy += FOOD_ENERGY_RECHARGE
-                    world.place_tile(food_pos[0], food_pos[1], Tile.EMPTY) # Clear food from grid
+                    world.place_tile(food_pos[0], food_pos[1], Tile.EMPTY)
                     food_to_remove_from_list_current_step.append(food_pos)
-                    print(f"{agent.name} collected spawned food! Energy: {agent.energy:.2f}")
-                    
-        # Remove collected food from active_food_positions list (must remove after iteration completes)
+
         for f_pos_to_remove in food_to_remove_from_list_current_step:
             if f_pos_to_remove in active_food_positions:
                 active_food_positions.remove(f_pos_to_remove)
 
-
-        # Reproduction logic
-        for agent in population: # Iterate over the original population list
+        multiplier = ((NUM_SIMULATION_STEPS - step) / NUM_SIMULATION_STEPS * .75) ** 2
+        for agent in population:
             if agent.energy >= REPRODUCTION_ENERGY_THRESHOLD:
-                child_agent = mutate_agent(agent, MUTATION_RATE, MUTATION_STRENGTH)
-                #child_agent.name = f"{agent.name}_child{random.randint(0,99)}" # Name handled in mutate_agent now
-                child_agent.energy = INITIAL_AGENT_ENERGY # Child starts with fresh energy
-                agent.energy -= REPRODUCTION_COST # Parent pays energy cost
+                child_agent = mutate_agent(agent, MUTATION_RATE * multiplier, MUTATION_STRENGTH * multiplier)
+                child_agent.energy = INITIAL_AGENT_ENERGY
+                agent.energy -= REPRODUCTION_COST
                 new_agents.append(child_agent)
-                print(f"{agent.name} reproduced! Created {child_agent.name}. Parent energy: {agent.energy:.2f}")
+                reproduced_this_step.add(agent)
 
-        # Remove dead agents from population (after all processing)
         for dead_agent in agents_to_remove:
-            res_list.append(dead_agent)
-            while len(res_list) > 10:
-                res_list.pop(0)
             if dead_agent.position is not None:
-                world.place_tile(dead_agent.position[0], dead_agent.position[1], Tile.EMPTY) # Clear from world
-            population.remove(dead_agent)
-            #print(f"Removed {dead_agent.name} (died). Population size: {len(population)}") # Suppress for cleaner output
+                world.place_tile(dead_agent.position[0], dead_agent.position[1], Tile.EMPTY)
+            if dead_agent in population:
+                population.remove(dead_agent)
 
-
-        # Add new agents to population
         for new_agent in new_agents:
             population.append(new_agent)
-            # Place new agents at top of world similar to initial placement
-            # This will also reset their energy to INITIAL_AGENT_ENERGY
-            place_agents_in_world(world, [new_agent]) # Use helper for single new agent
+            place_agents_in_world(world, [new_agent])
 
+        if len(population) > OVERPOPULATION_THRESHOLD:
+            print(f"Population {len(population)} exceeds {OVERPOPULATION_THRESHOLD}. Pruning...")
+            population.sort(key=lambda agent: agent.energy, reverse=True)
+            agents_to_prune_due_to_overpopulation = population[MAX_POPULATION_SIZE:]
+            for pruned_agent in agents_to_prune_due_to_overpopulation:
+                if len(res_list) < 50 or pruned_agent in reproduced_this_step:
+                    res_list.append(pruned_agent)
+                if pruned_agent.position is not None:
+                    world.place_tile(pruned_agent.position[0], pruned_agent.position[1], Tile.EMPTY)
+            population = population[:MAX_POPULATION_SIZE]
 
-        # Check for population extinction and resurrection
         if not population:
             print(f"\n--- Generation {generation} extinct. Resurrecting new population! ---")
             generation += 1
 
             resurrected_population = []
-            for agent_to_res in res_list: # Resurrect 'num' agents
+            num_to_resurrect = num
 
+            if len(res_list) < num_to_resurrect:
+                print(f"Warning: Not enough agents in res_list ({len(res_list)}) for full resurrection ({num_to_resurrect}). Filling with new random agents.")
+                for i in range(num_to_resurrect - len(res_list)):
+                    new_rand_agent = Agent(f"NewRandomAgent_{generation}_{i+1}", NEURON_COUNT)
+                    res_list.append(new_rand_agent)
 
-                # Apply mutation to this new agent to create variation
-                # Using stronger mutation to encourage more exploration when resurrecting
-                resurrected_agent = mutate_agent(agent_to_res, MUTATION_RATE, MUTATION_STRENGTH)
+            agents_for_resurrection_base = res_list[-num_to_resurrect:]
+            for agent_to_res_base in agents_for_resurrection_base:
+                resurrected_agent = mutate_agent(agent_to_res_base, MUTATION_RATE * multiplier, MUTATION_STRENGTH * multiplier)
                 resurrected_population.append(resurrected_agent)
 
-            res_list.clear()  # Clear references to dead agents once used
+            res_list = []
             population = resurrected_population
-
-            # Regenerate the world for the new generation
-            world = GravityWorld(width=WORLD_WIDTH, height=WORLD_HEIGHT)
             active_food_positions = []
-
-            # Place the resurrected agents in the new world
             place_agents_in_world(world, population)
-
-            # Spawn initial food for the new generation
             active_food_positions = spawn_food(world, active_food_positions)
-            
             print(f"Resurrection complete. New population size: {len(population)}")
 
-
-        # Capture the current world state and metrics for animation
-        world_states.append(world.render())
-        population_at_each_step.append(len(population))
-        num_food_at_each_step.append(len(active_food_positions))
+        if step >= NUM_SIMULATION_STEPS - 1000:
+            world_states.append(world.render())
+            population_at_each_step.append(len(population))
+            num_food_at_each_step.append(len(active_food_positions))
 
     save_path = os.path.join(SAVE_DIRECTORY, f"sim_population.pkl")
     if len(population) > 0:
         with open(save_path, 'wb') as f:
             pickle.dump(population, f)
-        print(f"Saved {population} to {save_path}")
+        print(f"Saved population to {save_path}")
 
     print("\nMulti-agent simulation finished.")
     print(f"Final Population size: {len(population)}")
 
     print("Generating animation...")
-    fig, ax = plt.subplots(figsize=(WORLD_WIDTH / 5, WORLD_HEIGHT / 5)) # Adjust figsize as needed
+    fig, ax = plt.subplots(figsize=(WORLD_WIDTH / 5, WORLD_HEIGHT / 5))
     ax.set_xticks([])
     ax.set_yticks([])
 
@@ -389,14 +410,12 @@ def run_multi_agent_simulation(num=50): # Added num parameter
         ax.set_title(f"Step: {frame+1}, Agents: {population_at_each_step[frame]}, Food: {num_food_at_each_step[frame]}")
         return [img]
 
-    ani = animation.FuncAnimation(fig, update, frames=len(world_states), interval=100, blit=True) # interval in ms
-
-    animation_filename = "simulation_animation.gif" # or .mp4, but requires ffmpeg
+    ani = animation.FuncAnimation(fig, update, frames=len(world_states), interval=100, blit=True)
+    animation_filename = "simulation_animation.gif"
     print(f"Saving animation to {animation_filename} (this may take a while)...")
-    ani.save(animation_filename, writer='pillow', fps=5) # 'pillow' for GIF, 'ffmpeg' for MP4 (requires ffmpeg installed)
-    plt.close(fig) # Close the figure to free up memory
+    ani.save(animation_filename, writer='pillow', fps=5)
+    plt.close(fig)
     print("Animation saved!")
-
 
 if __name__ == "__main__":
     # Ensure the 'trained_agents' directory exists from the previous step
@@ -405,11 +424,3 @@ if __name__ == "__main__":
         print("Please run PretrainingLoop.py first to train and save agents.")
     else:
         run_multi_agent_simulation()
-
-if __name__ == "__main__":
-    # Ensure the 'trained_agents' directory exists from the previous step
-    if not os.path.exists(SAVE_DIRECTORY):
-        print(f"Directory '{SAVE_DIRECTORY}' not found.")
-        print("Please run PretrainingLoop.py first to train and save agents.")
-    else:
-        run_multi_agent_simulation(num=10)
