@@ -218,6 +218,7 @@ def run_multi_agent_simulation(num=50):
             world = new_world
             current_width = new_width
             current_height = new_height
+            world.enforce_traversable()
             place_agents_in_world(world, population)
 
         # Terrain evolution
@@ -241,6 +242,7 @@ def run_multi_agent_simulation(num=50):
                             world.place_tile(x, target_y, Tile.BLOCK)
                         elif direction == -1 and world.get_tile(x, column_height) == Tile.BLOCK:
                             world.place_tile(x, column_height, Tile.EMPTY)
+            world.enforce_traversable()
 
         proba = (NUM_SIMULATION_STEPS - step) / NUM_SIMULATION_STEPS
         proba = np.max([proba, .2])
@@ -300,6 +302,7 @@ def run_multi_agent_simulation(num=50):
 
         current_agent_positions_on_grid = [(a.position[0], a.position[1]) for a in population if a.energy > 0 and a.position is not None]
         updated_agent_positions, updated_food_positions = world.apply_gravity(current_agent_positions_on_grid, active_food_positions)
+        world.enforce_traversable()
 
         agent_index = 0
         for agent in population:
