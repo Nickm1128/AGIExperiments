@@ -4,6 +4,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from concurrent.futures import ThreadPoolExecutor
 from config import colors, cmap, bounds, norm
 
 # Import classes from your existing modules
@@ -258,6 +259,23 @@ def run_multi_agent_simulation(num=50):
                 if world.grid[y][x] == Tile.AGENT:
                     world.grid[y][x] = Tile.EMPTY
 
+        def agent_compute_action(agent_obj):
+            radius = 15
+            local_inputs = []
+            ax, ay = agent_obj.position
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    tx = ax + dx
+                    ty = ay + dy
+                    tile_val = Tile.BLOCK if not (0 <= tx < world.width and 0 <= ty < world.height) else world.get_tile(tx, ty)
+                    normalized_val = tile_val / 3.0
+                    local_inputs.append(normalized_val + random.gauss(0, INPUT_NOISE_STD))
+
+            agent_obj.receive_inputs(local_inputs)
+            agent_obj.step()
+            return agent_obj.decide_action()
+
+        live_agents = []
         for agent in population:
             if agent.energy <= 0:
                 if len(res_list) < 50 or agent in reproduced_this_step:
@@ -272,22 +290,15 @@ def run_multi_agent_simulation(num=50):
                 agents_to_remove.append(agent)
                 continue
 
-            radius = 15
-            local_inputs = []
-            ax, ay = agent.position
-            for dy in range(-radius, radius + 1):
-                for dx in range(-radius, radius + 1):
-                    tx = ax + dx
-                    ty = ay + dy
-                    tile_val = Tile.BLOCK if not (0 <= tx < world.width and 0 <= ty < world.height) else world.get_tile(tx, ty)
-                    normalized_val = tile_val / 3.0
-                    local_inputs.append(normalized_val + random.gauss(0, INPUT_NOISE_STD))
+            live_agents.append(agent)
 
-            agent.receive_inputs(local_inputs)
-            agent.step()
-            action = agent.decide_action()
+        actions = []
+        if live_agents:
+            with ThreadPoolExecutor() as executor:
+                actions = list(executor.map(agent_compute_action, live_agents))
+
+        for agent, action in zip(live_agents, actions):
             world.agent_pos = agent.position
-
             if action == 'jump_left':
                 world.jump(-1)
             elif action == 'left':
