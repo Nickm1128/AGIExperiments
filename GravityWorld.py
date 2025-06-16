@@ -188,3 +188,23 @@ class GravityWorld:
                 render_grid[ay-1][ax] = Tile.BLOCK
 
         return render_grid
+
+    def column_surface_height(self, x):
+        """Return the y-coordinate of the topmost block in column ``x``."""
+        for y in range(self.height - 2, -1, -1):
+            if self.grid[y][x] == Tile.BLOCK:
+                return y
+        return self.height - 1
+
+    def enforce_traversable(self):
+        """Ensure adjacent columns differ in height by at most one block."""
+        for x in range(self.width - 1):
+            while True:
+                h_cur = self.column_surface_height(x)
+                h_next = self.column_surface_height(x + 1)
+                if h_cur - h_next > 1:
+                    self.place_tile(x, h_cur, Tile.EMPTY)
+                elif h_next - h_cur > 1:
+                    self.place_tile(x + 1, h_next, Tile.EMPTY)
+                else:
+                    break
