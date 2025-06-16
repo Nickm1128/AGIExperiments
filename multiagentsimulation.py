@@ -137,11 +137,11 @@ def place_agents_in_world(world, agents_list):
     for agent in agents_list:
         agent_placed = False
         attempts = 0
-        max_attempts_for_spawn = WORLD_WIDTH * (WORLD_HEIGHT // 2) # Max attempts to find an empty spot in upper half
+        max_attempts_for_spawn = world.width * (world.height // 2)  # Max attempts to find an empty spot in upper half
 
         # Strategy 1: Try to place at y=0 (top) first
-        while not agent_placed and attempts < WORLD_WIDTH * 2: # Give it a few tries at y=0
-            current_x = random.randint(0, WORLD_WIDTH - 1)
+        while not agent_placed and attempts < world.width * 2:  # Give it a few tries at y=0
+            current_x = random.randint(0, world.width - 1)
             if world.get_tile(current_x, 0) == Tile.EMPTY:
                 world.place_tile(current_x, 0, Tile.AGENT)
                 agent.position = (current_x, 0)
@@ -153,9 +153,9 @@ def place_agents_in_world(world, agents_list):
             print(f"Warning: Failed to place {agent.name} at y=0 after many attempts. Searching for any empty spot above terrain.")
             attempts = 0
             while not agent_placed and attempts < max_attempts_for_spawn:
-                current_x = random.randint(0, WORLD_WIDTH - 1)
-                # Try placing in rows from 0 up to WORLD_HEIGHT - 3 (above the ground and first block layer)
-                current_y = random.randint(0, WORLD_HEIGHT - 3) 
+                current_x = random.randint(0, world.width - 1)
+                # Try placing in rows from 0 up to world.height - 3 (above the ground and first block layer)
+                current_y = random.randint(0, world.height - 3)
                 if world.get_tile(current_x, current_y) == Tile.EMPTY:
                     world.place_tile(current_x, current_y, Tile.AGENT)
                     agent.position = (current_x, current_y)
@@ -213,12 +213,8 @@ def run_multi_agent_simulation(num=50):
             for x in range(current_width):
                 for y in range(current_height):
                     new_world.place_tile(x, y, world.get_tile(x, y))
-            for x in range(current_width, new_width):
-                new_world.place_tile(x, new_height - 1, Tile.BLOCK)
-            for x in range(new_width):
                 for y in range(current_height, new_height - 1):
                     new_world.place_tile(x, y, Tile.EMPTY)
-                new_world.place_tile(x, new_height - 1, Tile.BLOCK)
             world = new_world
             current_width = new_width
             current_height = new_height
@@ -233,18 +229,18 @@ def run_multi_agent_simulation(num=50):
                         heights.append(y)
                     elif heights:
                         break
-                current_height = heights[0] if heights else (world.height - 1)
+                column_height = heights[0] if heights else (world.height - 1)
                 left_height = next((y for y in range(world.height - 2, -1, -1) if world.get_tile(x - 1, y) == Tile.BLOCK), world.height - 1)
                 right_height = next((y for y in range(world.height - 2, -1, -1) if world.get_tile(x + 1, y) == Tile.BLOCK), world.height - 1)
                 avg_neighbor_height = (left_height + right_height) // 2
-                if abs(current_height - avg_neighbor_height) <= 1:
+                if abs(column_height - avg_neighbor_height) <= 1:
                     direction = random.choice([-1, 0, 1])
-                    target_y = current_height - direction
+                    target_y = column_height - direction
                     if 0 <= target_y < world.height - 1:
                         if direction == 1:
                             world.place_tile(x, target_y, Tile.BLOCK)
-                        elif direction == -1 and world.get_tile(x, current_height) == Tile.BLOCK:
-                            world.place_tile(x, current_height, Tile.EMPTY)
+                        elif direction == -1 and world.get_tile(x, column_height) == Tile.BLOCK:
+                            world.place_tile(x, column_height, Tile.EMPTY)
 
         proba = (NUM_SIMULATION_STEPS - step) / NUM_SIMULATION_STEPS
         proba = np.max([proba, .2])
