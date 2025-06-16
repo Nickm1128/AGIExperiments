@@ -31,7 +31,7 @@ INPUT_NOISE_STD = .1
 MAX_WORLD_WIDTH = 500
 MAX_WORLD_HEIGHT = 20
 
-NUM_SIMULATION_STEPS = 100_000 # Total steps for the multi-agent simulation
+NUM_SIMULATION_STEPS = 10_000 # Total steps for the multi-agent simulation
 
 # New constants for population control
 MAX_POPULATION_SIZE = 50
