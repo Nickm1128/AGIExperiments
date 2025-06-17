@@ -13,9 +13,9 @@ from mutations import mutate_agent
 
 # --- Configuration Parameters ---
 SAVE_DIRECTORY = "trained_agents"
-WORLD_WIDTH = 100
+WORLD_WIDTH = 500
 WORLD_HEIGHT = 20
-INITIAL_WORLD_WIDTH = 100
+INITIAL_WORLD_WIDTH = 500
 INITIAL_WORLD_HEIGHT = 20
 INITIAL_AGENT_ENERGY = 100.0
 ENERGY_DEPLETION_RATE = 1.5 # Energy lost per simulation step
@@ -31,7 +31,7 @@ INPUT_NOISE_STD = .1
 MAX_WORLD_WIDTH = 500
 MAX_WORLD_HEIGHT = 20
 
-NUM_SIMULATION_STEPS = 1_000_000 # Total steps for the multi-agent simulation
+NUM_SIMULATION_STEPS = 100_000 # Total steps for the multi-agent simulation
 
 # New constants for population control
 MAX_POPULATION_SIZE = 75
@@ -205,21 +205,21 @@ def run_multi_agent_simulation(num=50):
             print(f"\n--- Simulation Step {step + 1}/{NUM_SIMULATION_STEPS} (Generation {generation}) (Pop size: {len(population)}) ---")
 
         # Gradual world expansion
-        if step % 800 == 0 and (current_width < MAX_WORLD_WIDTH or current_height < MAX_WORLD_HEIGHT):
-            new_width = min(current_width + 4, MAX_WORLD_WIDTH)
-            new_height = min(current_height + 4, MAX_WORLD_HEIGHT)
-            print(f"[World Resize] Increasing world size to {new_width}x{new_height}")
-            new_world = GravityWorld(width=new_width, height=new_height)
-            for x in range(current_width):
-                for y in range(current_height):
-                    new_world.place_tile(x, y, world.get_tile(x, y))
-                for y in range(current_height, new_height - 1):
-                    new_world.place_tile(x, y, Tile.EMPTY)
-            world = new_world
-            current_width = new_width
-            current_height = new_height
-            world.enforce_traversable()
-            place_agents_in_world(world, population)
+        # if step % 800 == 0 and (current_width < MAX_WORLD_WIDTH or current_height < MAX_WORLD_HEIGHT):
+        #     new_width = min(current_width + 4, MAX_WORLD_WIDTH)
+        #     new_height = min(current_height + 4, MAX_WORLD_HEIGHT)
+        #     print(f"[World Resize] Increasing world size to {new_width}x{new_height}")
+        #     new_world = GravityWorld(width=new_width, height=new_height)
+        #     for x in range(current_width):
+        #         for y in range(current_height):
+        #             new_world.place_tile(x, y, world.get_tile(x, y))
+        #         for y in range(current_height, new_height - 1):
+        #             new_world.place_tile(x, y, Tile.EMPTY)
+        #     world = new_world
+        #     current_width = new_width
+        #     current_height = new_height
+        #     world.enforce_traversable()
+        #     place_agents_in_world(world, population)
 
         # Terrain evolution
         if step % 5 == 0:
