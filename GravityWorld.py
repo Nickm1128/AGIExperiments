@@ -197,20 +197,20 @@ class GravityWorld:
         return self.height - 1
 
     def enforce_traversable(self):
-        """Ensure adjacent columns differ in height by at most one block."""
         for x in range(self.width - 1):
-            while True:
-                h_cur = self.column_surface_height(x)
-                h_next = self.column_surface_height(x + 1)
-                if h_cur < h_next - 1:
-                    if h_cur < self.height - 1:
-                        self.place_tile(x, h_cur, Tile.EMPTY)
-                    else:
-                        break
-                elif h_next < h_cur - 1:
-                    if h_next < self.height - 1:
-                        self.place_tile(x + 1, h_next, Tile.EMPTY)
-                    else:
-                        break
+            h_cur = self.column_surface_height(x)
+            h_next = self.column_surface_height(x + 1)
+
+            while h_cur < h_next - 1:
+                if h_cur > 0:
+                    self.place_tile(x, h_cur - 1, Tile.BLOCK)
+                    h_cur -= 1
+                else:
+                    break
+
+            while h_next < h_cur - 1:
+                if h_next > 0:
+                    self.place_tile(x + 1, h_next - 1, Tile.BLOCK)
+                    h_next -= 1
                 else:
                     break
