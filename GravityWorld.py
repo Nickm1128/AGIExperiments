@@ -202,9 +202,15 @@ class GravityWorld:
             while True:
                 h_cur = self.column_surface_height(x)
                 h_next = self.column_surface_height(x + 1)
-                if h_cur - h_next > 1:
-                    self.place_tile(x, h_cur, Tile.EMPTY)
-                elif h_next - h_cur > 1:
-                    self.place_tile(x + 1, h_next, Tile.EMPTY)
+                if h_cur < h_next - 1:
+                    if h_cur < self.height - 1:
+                        self.place_tile(x, h_cur, Tile.EMPTY)
+                    else:
+                        break
+                elif h_next < h_cur - 1:
+                    if h_next < self.height - 1:
+                        self.place_tile(x + 1, h_next, Tile.EMPTY)
+                    else:
+                        break
                 else:
                     break
