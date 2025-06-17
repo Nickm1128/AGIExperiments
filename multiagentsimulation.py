@@ -328,7 +328,7 @@ def run_multi_agent_simulation(num=50):
             if f_pos_to_remove in active_food_positions:
                 active_food_positions.remove(f_pos_to_remove)
 
-        multiplier = ((NUM_SIMULATION_STEPS - step) / NUM_SIMULATION_STEPS * .75) ** 2
+        multiplier = ((NUM_SIMULATION_STEPS - step) / NUM_SIMULATION_STEPS * .75) ** 2 
         for agent in population:
             if agent.energy >= REPRODUCTION_ENERGY_THRESHOLD:
                 child_agent = mutate_agent(agent, MUTATION_RATE * multiplier, MUTATION_STRENGTH * multiplier)
